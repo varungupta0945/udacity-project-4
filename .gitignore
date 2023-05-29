@@ -1,0 +1,6 @@
+**/.DS_Store
+backend/node_modules/
+client/node_modules/
+.idea
+.vscode
+client/.idea
