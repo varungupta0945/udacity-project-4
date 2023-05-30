@@ -1,5 +1,4 @@
 import dateFormat from 'dateformat'
-// @ts-ignore
 import { History } from 'history'
 import update from 'immutability-helper'
 import * as React from 'react'
@@ -98,7 +97,7 @@ export class Todos extends React.PureComponent<TodosProps, TodosState> {
         loadingTodos: false
       })
     } catch (e) {
-      alert(`Failed to fetch todos: ${e.message}`)
+      alert(`Failed to fetch todos: ${(e as Error).message}`)
     }
   }
 
@@ -210,6 +209,6 @@ export class Todos extends React.PureComponent<TodosProps, TodosState> {
     const date = new Date()
     date.setDate(date.getDate() + 7)
 
-    return dateFormat(date, 'yyyy-mm-dd', true) as string + 'T' + dateFormat(date, 'hh:mm:ss.000+0000', true) as string;
+    return dateFormat(date, 'yyyy-mm-dd') as string
   }
 }

@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import { Router, Link, Route, Switch } from 'react-router-dom'
+import { Link, Route, Router, Switch } from 'react-router-dom'
 import { Grid, Menu, Segment } from 'semantic-ui-react'
 
 import Auth from './auth/Auth'
@@ -86,7 +86,6 @@ export default class App extends Component<AppProps, AppState> {
       return <LogIn auth={this.props.auth} />
     }
 
-    // @ts-ignore
     return (
       <Switch>
         <Route
