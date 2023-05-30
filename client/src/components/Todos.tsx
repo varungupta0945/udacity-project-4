@@ -209,6 +209,6 @@ export class Todos extends React.PureComponent<TodosProps, TodosState> {
     const date = new Date()
     date.setDate(date.getDate() + 7)
 
-    return dateFormat(date, 'yyyy-mm-dd') as string
+    return dateFormat(date, `UTC:yyyy-mm-dd'T'HH:MM:ss'Z'`) as string
   }
 }
