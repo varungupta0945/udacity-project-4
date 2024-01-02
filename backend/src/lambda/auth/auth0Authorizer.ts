@@ -5,11 +5,11 @@ import { decode, verify } from 'jsonwebtoken'
 import { createLogger } from '../../utils/logger'
 import { Jwt } from '../../auth/Jwt'
 import { JwtPayload } from '../../auth/JwtPayload'
-import { getSigningKey } from '../../auth/utils'
+import Axios from 'axios'
 
 const logger = createLogger('auth')
 
-const jwksUrl = 'https://dev-gar55nt1nhag3aeg.us.auth0.com/.well-known/jwks.json'
+const jwksUrl = 'https://dev-fgei2srij33a5037.us.auth0.com/.well-known/jwks.json'
 
 export const handler = async (
   event: APIGatewayTokenAuthorizerEvent
@@ -52,24 +52,30 @@ export const handler = async (
 }
 
 async function verifyToken(authHeader: string): Promise<JwtPayload> {
+  logger.info('verifying token')
   const token = getToken(authHeader)
   const jwt: Jwt = decode(token, { complete: true }) as Jwt
 
-  if (jwt.header.alg !== 'RS256') {
-    throw new Error('Invalid token');
+  const response = await Axios.get(jwksUrl)
+  const keys = response.data.keys
+  const signingKeys = keys.find(key => key.kid == jwt.header.kid)
+  logger.info('signingKeys', signingKeys)
+
+  if (!signingKeys)
+  {
+    throw new Error('they jws endpoint did not return any keys')
   }
 
-  const key = await getSigningKey(jwksUrl, jwt.header.kid);
-  if (!key) {
-    throw new Error('Invalid token');
-  }
+  //get pem data
+  const pemData = signingKeys.x5c[0]
+  //convert pem data to cert
+  const cert = `-----BEGIN CERTIFICATE-----\n${pemData}\n-----END CERTIFICATE-----`
 
-  const verifyToken = verify(token, key.publicKey);
-  if (typeof verifyToken === 'string') {
-    throw new Error('Invalid token');
-  }
+  const verifiedToken = verify(token, cert, { algorithms: ['RS256'] }) as JwtPayload
+  logger.info('verifiedToken', verifiedToken)
 
-  return verifyToken;
+  return verifiedToken
+
 }
 
 function getToken(authHeader: string): string {
