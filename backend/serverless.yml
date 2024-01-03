@@ -6,12 +6,12 @@ plugins:
   - serverless-webpack
   - serverless-iam-roles-per-function
   - serverless-plugin-tracing
+  - serverless-reqvalidator-plugin
 
 provider:
   name: aws
-  runtime: nodejs14.x
-  # lambdaHashingVersion: '20201221'
-
+  runtime: nodejs18.x
+  
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'us-east-1'}
 
@@ -24,8 +24,9 @@ provider:
   environment:
     TODOS_TABLE: Todos-${self:provider.stage}
     TODOS_CREATED_AT_INDEX: CreatedAtIndex
-    ATTACHMENT_S3_BUCKET: hungpv15-serverless-c4-todo-images-${self:provider.stage}
+    ATTACHMENT_S3_BUCKET: udacity-vgupta0945-serverless-todo-images-${self:provider.stage}
     SIGNED_URL_EXPIRATION: 300
+    
 
   logs:
     # Enable API Gateway logs
@@ -42,11 +43,12 @@ provider:
 
 
 functions:
+
   Auth:
     handler: src/lambda/auth/auth0Authorizer.handler
-    name: Auth
+
   # TODO: Configure this function - 
-  # Provide iamRoleStatements property for performing Actions on DynamoDB
+  # Provide iamRoleStatements property. Decide the Actions and AWS Resource. 
   GetTodos:
     handler: src/lambda/http/getTodos.handler
     events:
@@ -54,9 +56,12 @@ functions:
           method: get
           path: todos
           cors: true
-          authorizer:
-            name: Auth
-    role: GetTodoRole
+          authorizer: Auth
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
 
   # TODO: Configure this function - 
   # Provide iamRoleStatements property. Decide the Actions and AWS Resource. 
@@ -69,12 +74,17 @@ functions:
           method: post
           path: todos
           cors: true
-          authorizer:
-            name: Auth
+          authorizer: Auth
+          reqValidatorName: RequestBodyValidator
           request:
             schemas:
               application/json: ${file(models/create-todo-model.json)}
-    role: CreateTodoRole
+
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:PutItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
 
   # TODO: Configure this function
   # Provide property for setting up CORS, Authorizer, iamRoleStatements, and request schemas
@@ -85,12 +95,18 @@ functions:
           method: patch
           path: todos/{todoId}
           cors: true
-          authorizer:
-            name: Auth
+          authorizer: Auth
+          reqValidatorName: RequestBodyValidator
           request:
-            schemas:
+            schema:
               application/json: ${file(models/update-todo-model.json)}
-    role: UpdateTodoRole
+
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:UpdateItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
+
 
   # TODO: Configure this function
   # Provide property for setting up CORS, Authorizer, iamRoleStatements
@@ -101,9 +117,13 @@ functions:
           method: delete
           path: todos/{todoId}
           cors: true
-          authorizer:
-            name: Auth
-    role: DeleteTodoRole
+          authorizer: Auth
+
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:DeleteItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
 
   # TODO: Configure this function
   # Provide property for setting up CORS, Authorizer, iamRoleStatements
@@ -114,144 +134,32 @@ functions:
           method: post
           path: todos/{todoId}/attachment
           cors: true
-          authorizer:
-            name: Auth
-    role: GenerateUploadUrlRole
+          authorizer: Auth
+
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:UpdateItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
+      - Effect: Allow
+        Action:
+          - s3:PutObject
+          - s3:GetObject
+        Resource: arn:aws:s3:::${self:provider.environment.ATTACHMENT_S3_BUCKET}
 
 resources:
   Resources:
     # Add necessary AWS resources. You will need at least the following AWS resources
     # TODO: Fill the properties
-    # Feel free to change the names as you like.
-    GetTodoRole:
-      Type: AWS::IAM::Role
+    # Feel free to change the names as you like. 
+    RequestBodyValidator:
+      Type: AWS::ApiGateway::RequestValidator
       Properties:
-        RoleName: GetTodoRole
-        AssumeRolePolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Principal:
-                Service:
-                  - lambda.amazonaws.com
-              Action: sts:AssumeRole
-        Policies:
-          - PolicyName: GetTodoPolicy
-            PolicyDocument:
-              Version: '2012-10-17'
-              Statement:
-                - Effect: Allow
-                  Action:
-                    - dynamodb:DescribeTable
-                    - dynamodb:Query
-                  Resource:
-                    - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
-                    - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}/index/${self:provider.environment.TODOS_CREATED_AT_INDEX}
-
-    CreateTodoRole:
-      Type: AWS::IAM::Role
-      Properties:
-        RoleName: CreateTodoRole
-        AssumeRolePolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Principal:
-                Service:
-                  - lambda.amazonaws.com
-              Action: sts:AssumeRole
-        Policies:
-          - PolicyName: CreateTodoPolicy
-            PolicyDocument:
-              Version: '2012-10-17'
-              Statement:
-                - Effect: Allow
-                  Action:
-                    - dynamodb:PutItem
-                  Resource:
-                    - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
-                    - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}/index/${self:provider.environment.TODOS_CREATED_AT_INDEX}
-
-    UpdateTodoRole:
-      Type: AWS::IAM::Role
-      Properties:
-        RoleName: UpdateTodoRole
-        AssumeRolePolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Principal:
-                Service:
-                  - lambda.amazonaws.com
-              Action: sts:AssumeRole
-        Policies:
-          - PolicyName: UpdateTodoPolicy
-            PolicyDocument:
-              Version: '2012-10-17'
-              Statement:
-                - Effect: Allow
-                  Action:
-                    - dynamodb:UpdateItem
-                  Resource:
-                    - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
-                    - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}/index/${self:provider.environment.TODOS_CREATED_AT_INDEX}
-
-    DeleteTodoRole:
-      Type: AWS::IAM::Role
-      Properties:
-        RoleName: DeleteTodoRole
-        AssumeRolePolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Principal:
-                Service:
-                  - lambda.amazonaws.com
-              Action: sts:AssumeRole
-        Policies:
-          - PolicyName: DeleteTodoPolicy
-            PolicyDocument:
-              Version: '2012-10-17'
-              Statement:
-                - Effect: Allow
-                  Action:
-                    - dynamodb:DeleteItem
-                  Resource:
-                    - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
-                    - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}/index/${self:provider.environment.TODOS_CREATED_AT_INDEX}
-
-    GenerateUploadUrlRole:
-      Type: AWS::IAM::Role
-      Properties:
-        RoleName: GenerateUploadUrlRole
-        AssumeRolePolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Principal:
-                Service:
-                  - lambda.amazonaws.com
-              Action: sts:AssumeRole
-        Policies:
-          - PolicyName: GenerateUploadUrlPolicy
-            PolicyDocument:
-              Version: '2012-10-17'
-              Statement:
-                - Effect: Allow
-                  Action:
-                    - s3:PutObject
-                  Resource:
-                    - "arn:aws:s3:::${self:provider.environment.ATTACHMENT_S3_BUCKET}/*"
-          - PolicyName: UpdateTodoPolicy
-            PolicyDocument:
-              Version: '2012-10-17'
-              Statement:
-                - Effect: Allow
-                  Action:
-                    - dynamodb:UpdateItem
-                  Resource:
-                    - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
-                    - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}/index/${self:provider.environment.TODOS_CREATED_AT_INDEX}
+        Name: 'request-body-validator'
+        RestApiId:
+          Ref: ApiGatewayRestApi
+        ValidateRequestBody: true
+        ValidateRequestParameters: true
 
     GatewayResponseDefault4XX:
       Type: AWS::ApiGateway::GatewayResponse
@@ -260,17 +168,14 @@ resources:
           gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
           gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
           gatewayresponse.header.Access-Control-Allow-Methods: "'GET,OPTIONS,POST'"
-
         ResponseType: DEFAULT_4XX
         RestApiId:
           Ref: ApiGatewayRestApi
     
-    # TODO: Create a DynamoDB table with local secondary index and a composite key
+    # DynamoDB table with local secondary index and a composite key
     TodosTable:
       Type: AWS::DynamoDB::Table
       Properties:
-        TableName: ${self:provider.environment.TODOS_TABLE}
-        BillingMode: PAY_PER_REQUEST
         AttributeDefinitions:
           - AttributeName: todoId
             AttributeType: S
@@ -283,7 +188,9 @@ resources:
             KeyType: HASH
           - AttributeName: todoId
             KeyType: RANGE
-        GlobalSecondaryIndexes:
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${self:provider.environment.TODOS_TABLE}
+        LocalSecondaryIndexes:
           - IndexName: ${self:provider.environment.TODOS_CREATED_AT_INDEX}
             KeySchema:
               - AttributeName: userId
@@ -291,17 +198,15 @@ resources:
               - AttributeName: createdAt
                 KeyType: RANGE
             Projection:
-              ProjectionType: ALL
+              ProjectionType: ALL # What attributes will be copied to an index
 
-    # TODO: Complete the bucket properties below.
-    # Do not forget to add the CorsConfiguration propoerty
+    #Complete the bucket properties below. 
     AttachmentsBucket:
       Type: AWS::S3::Bucket
       Properties:
         BucketName: ${self:provider.environment.ATTACHMENT_S3_BUCKET}
         OwnershipControls:
           Rules:
-            # Note from the future: BucketOwnerPreferred might be better
             - ObjectOwnership: ObjectWriter
         PublicAccessBlockConfiguration:
           BlockPublicAcls: false
@@ -310,7 +215,10 @@ resources:
           RestrictPublicBuckets: false
         CorsConfiguration:
           CorsRules:
-            - AllowedOrigins:
+            -
+              AllowedOrigins:
+                - '*'
+              AllowedHeaders:
                 - '*'
               AllowedMethods:
                 - GET
@@ -318,22 +226,22 @@ resources:
                 - POST
                 - DELETE
                 - HEAD
-              AllowedHeaders:
-                - '*'
               MaxAge: 3000
 
-    # TODO: Complete the policy below and attach it to the bucket defined above
-    # For cross referencing the name of the bucket, use "!Ref AttachmentsBucket"
+    #Complete the policy below and attach it to the bucket defined above
+  
     BucketPolicy:
       Type: AWS::S3::BucketPolicy
       Properties:
         PolicyDocument:
-          Id: ${self:provider.environment.ATTACHMENT_S3_BUCKET}-policy
+          Id: vg-attachment-serverless-c4-todo-images-Policy
           Version: "2012-10-17"
           Statement:
             - Sid: PublicReadForGetBucketObjects
               Effect: Allow
               Principal: '*'
-              Action: 's3:GetObject'
+              Action: 
+                - 's3:GetObject'
+                - 's3:PutObject'
               Resource: 'arn:aws:s3:::${self:provider.environment.ATTACHMENT_S3_BUCKET}/*'
         Bucket: !Ref AttachmentsBucket

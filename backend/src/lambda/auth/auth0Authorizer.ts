@@ -1,18 +1,20 @@
-import { APIGatewayTokenAuthorizerEvent, CustomAuthorizerResult } from 'aws-lambda'
+import { CustomAuthorizerEvent, CustomAuthorizerResult } from 'aws-lambda'
 import 'source-map-support/register'
 
-import { decode, verify } from 'jsonwebtoken'
+import { verify, decode } from 'jsonwebtoken'
 import { createLogger } from '../../utils/logger'
+import Axios from 'axios'
 import { Jwt } from '../../auth/Jwt'
 import { JwtPayload } from '../../auth/JwtPayload'
-import Axios from 'axios'
 
 const logger = createLogger('auth')
 
+//  URL that can be used to download a certificate that can be used to verify JWT token signature.
+// To get this URL you need to go to an Auth0 page -> Show Advanced Settings -> Endpoints -> JSON Web Key Set
 const jwksUrl = 'https://dev-fgei2srij33a5037.us.auth0.com/.well-known/jwks.json'
 
 export const handler = async (
-  event: APIGatewayTokenAuthorizerEvent
+  event: CustomAuthorizerEvent
 ): Promise<CustomAuthorizerResult> => {
   logger.info('Authorizing a user', event.authorizationToken)
   try {
@@ -52,30 +54,19 @@ export const handler = async (
 }
 
 async function verifyToken(authHeader: string): Promise<JwtPayload> {
-  logger.info('verifying token')
   const token = getToken(authHeader)
+  logger.info('Verifying token: ' + token)
   const jwt: Jwt = decode(token, { complete: true }) as Jwt
 
-  const response = await Axios.get(jwksUrl)
-  const keys = response.data.keys
-  const signingKeys = keys.find(key => key.kid == jwt.header.kid)
-  logger.info('signingKeys', signingKeys)
+  const certResponse = await Axios.get(jwksUrl);
 
-  if (!signingKeys)
-  {
-    throw new Error('they jws endpoint did not return any keys')
-  }
+  const signingKey = certResponse.data.keys.find(key => key.kid === jwt.header.kid);
+  let certValue: string = signingKey.x5c[0];
 
-  //get pem data
-  const pemData = signingKeys.x5c[0]
-  //convert pem data to cert
-  const cert = `-----BEGIN CERTIFICATE-----\n${pemData}\n-----END CERTIFICATE-----`
+  certValue = certValue.match(/.{1,64}/g).join('\n');
+  const finalCertKey: string = `-----BEGIN CERTIFICATE-----\n${certValue}\n-----END CERTIFICATE-----\n`;
 
-  const verifiedToken = verify(token, cert, { algorithms: ['RS256'] }) as JwtPayload
-  logger.info('verifiedToken', verifiedToken)
-
-  return verifiedToken
-
+  return verify(token, finalCertKey, { algorithms: ['RS256'] }) as JwtPayload;
 }
 
 function getToken(authHeader: string): string {
@@ -85,5 +76,7 @@ function getToken(authHeader: string): string {
     throw new Error('Invalid authentication header')
 
   const split = authHeader.split(' ')
-  return split[1]
+  const token = split[1]
+
+  return token
 }
